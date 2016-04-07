@@ -33,7 +33,7 @@ int serve_client(int serve_id, int sock)
         printf("[%d] RECV: %s\n", serve_id, rbuf);
         sprintf(sbuf, "total recv %d bytes.", (int) rlen);
         slen = send(sock, sbuf, strlen(sbuf), 0);
-        printf("[%d] SEND: %s\n", serve_id, sbuf);
+        printf("[%d] SEND %d: %s\n", serve_id, (int) slen, sbuf);
     }
 
     return 0;
