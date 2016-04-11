@@ -54,6 +54,33 @@ int db_add_contact_item(const char* db_filename, contact_item_t* item)
     return 0;
 }
 
+int db_read_item(FILE* db, contact_item_t* item)
+{
+    size_t read_size = 0;
+    if (NULL == item)
+        return 1;
+
+    memset(item, 0, sizeof(contact_item_t));
+    read_size = fread(item, 1, sizeof(contact_fixed_header_t), db);
+    if (read_size == 0)
+        return 1;
+
+    if (sizeof(contact_fixed_header_t) != read_size)
+    {
+        printf("[ERROR] broken db data read.\n");
+        return 1;
+    }
+
+    read_size = fread(item->resume, 1, item->resume_size, db);
+    if (read_size != item->resume_size)
+    {
+        printf("[ERROR] resume data broken.\n");
+        return 1;
+    }
+
+    return 0;
+}
+
 int db_show_contact(const char* db_filename)
 {
     FILE* fd = fopen(db_filename, "r");
@@ -66,30 +93,14 @@ int db_show_contact(const char* db_filename)
     printf("[%s]\t%s\t\t(%s)\t%s\t\t%s\t\t\t%s\n", "id", "name", "age", "phone", "email", "resume");
     while (!feof(fd))
     {
-        contact_fixed_header_t header;
-        char resume[128] = "";
-        size_t read_size = 0, resume_size = 0;
+        contact_item_t item;
 
-        read_size = fread(&header, 1, sizeof(contact_fixed_header_t), fd);
-        if (read_size == 0)
-           break;
-
-        if(sizeof(contact_fixed_header_t) != read_size)
-        {
-            printf("[ERROR] broken db data read.\n");
+        if (db_read_item(fd, &item))
             break;
-        }
-
-        resume_size = fread(resume, 1, header.resume_size, fd);
-        if (resume_size != header.resume_size)
-        {
-            printf("[ERROR] resume data broken.\n");
-            break;
-        }
 
         printf("[%d]\t%s\t(%d)\t%s\t%s\t%s\n",
-               header.id, header.name, header.age,
-               header.phone, header.email, resume);
+               item.id, item.name, item.age,
+               item.phone, item.email, item.resume);
     }
 
     fclose(fd);
@@ -101,8 +112,47 @@ int db_del_contact_item(const char* db_filename, contact_item_t* item)
     return 0;
 }
 
-int db_find_contact_item(const char* db_filename, contact_item_t* item)
+int db_find_contact_item(const char* db_filename, contact_item_t* pattern)
 {
+    FILE* fd = fopen(db_filename, "r");
+    if (NULL == fd)
+    {
+        printf("[ERROR] can not open db file '%s'\n", db_filename);
+        return 1;
+    }
+
+    printf("[%s]\t%s\t\t(%s)\t%s\t\t%s\t\t\t%s\n", "id", "name", "age", "phone", "email", "resume");
+    while (!feof(fd))
+    {
+        contact_item_t item;
+
+        if (db_read_item(fd, &item))
+            break;
+
+        if (pattern->id != 0 && pattern->id != item.id)
+            continue;
+
+        if (pattern->age != 0 && pattern->age != item.age)
+            continue;
+
+        if (pattern->name[0] != 0 && NULL == strstr(item.name, pattern->name))
+            continue;
+
+        if (pattern->phone[0] != 0 && NULL == strstr(item.phone, pattern->phone))
+            continue;
+
+        if (pattern->email[0] != 0 && NULL == strstr(item.email, pattern->email))
+            continue;
+
+        if (pattern->resume[0] != 0 && NULL == strstr(item.resume, pattern->resume))
+            continue;
+
+        printf("[%d]\t%s\t(%d)\t%s\t%s\t%s\n",
+               item.id, item.name, item.age,
+               item.phone, item.email, item.resume);
+    }
+
+    fclose(fd);
     return 0;
 }
 
@@ -195,6 +245,7 @@ int main(int argc, char* argv[])
     }
     else if (!strcmp("find", c) || !strcmp("f", c))
     {
+        retval = db_find_contact_item(db_filename, item);
     }
     else
     {
