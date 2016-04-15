@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define SQL_STATEMENT_BUFFER_SIZE               4096
 #define STR_STARTS_WITH(s, prefix)     (!strncmp(s, prefix, strlen(prefix)))
 
 #define CONTACT_ITEM_FIXED_FIELD                \
@@ -28,6 +29,18 @@ struct contact_item_s
 };
 
 typedef struct contact_item_s contact_item_t;
+
+struct contact_row_projection_s
+{
+    int id;
+    int age;
+    int name;
+    int phone;
+    int email;
+    int resume;
+};
+
+typedef struct contact_row_projection_s contact_row_projection_t;
 
 int db_add_contact_item(const char* db_filename, contact_item_t* item)
 {
@@ -218,41 +231,18 @@ int main(int argc, char* argv[])
     char* db_filename = NULL;
     char* c = NULL;
     int retval = 0;
+    char sql[SQL_STATEMENT_BUFFER_SIZE + 1] = "";
 
-    if (argc < 3)
-        usage(argv[0]);
+    while (1)
+    {
+        printf("SQL> ");
+        fflush(stdout);
 
-    db_filename = argv[1];
-    c = argv[2];
-
-    item = parse_contact_item(argc, argv);
-    if (NULL == item)
-    {
-        printf("parse failed.\n");
-        return 1;
+        fgets(sql, SQL_STATEMENT_BUFFER_SIZE, stdin);
+        printf("READ: %s\n", sql);
+        if (!strcmp(sql, "exit"))
+            break;
     }
-
-    if (!strcmp("add", c) || !strcmp("a", c))
-    {
-        retval = db_add_contact_item(db_filename, item);
-    }
-    else if (!strcmp("show", c) || !strcmp("s", c))
-    {
-        retval = db_show_contact(db_filename);
-    }
-    else if (!strcmp("del", c) || !strcmp("d", c))
-    {
-    }
-    else if (!strcmp("find", c) || !strcmp("f", c))
-    {
-        retval = db_find_contact_item(db_filename, item);
-    }
-    else
-    {
-        printf("unknown command: [%s]\n", c);
-    }
-
-    free(item);
 
     return retval;
 }
