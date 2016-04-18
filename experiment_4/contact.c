@@ -28,7 +28,9 @@
 #define SQL_VERB_ADD                            2
 
 
+#if 0
 #define DEBUG
+#endif
 
 #ifdef DEBUG
 #define DEBUG_PRINT(...)          printf(__VA_ARGS__)
@@ -133,7 +135,7 @@ int db_read_item(FILE* db, contact_item_t* item)
     return 0;
 }
 
-int db_show_contact(const char* db_filename)
+int db_show_contact(const char* db_filename, contact_row_projection_t* proj)
 {
     FILE* fd = fopen(db_filename, "r");
     if (NULL == fd)
@@ -142,7 +144,26 @@ int db_show_contact(const char* db_filename)
         return 1;
     }
 
-    printf("[%s]\t%s\t\t(%s)\t%s\t\t%s\t\t\t%s\n", "id", "name", "age", "phone", "email", "resume");
+    if (NULL == proj || proj->id)
+        printf("[id]\t");
+
+    if (NULL == proj || proj->name)
+        printf("name\t\t");
+
+    if (NULL == proj || proj->age)
+        printf("(age)\t");
+
+    if (NULL == proj || proj->phone)
+        printf("phone\t\t");
+
+    if (NULL == proj || proj->email)
+        printf("email\t\t");
+
+    if (NULL == proj || proj->resume)
+        printf("resume\t\t");
+
+    printf("\n");
+
     while (!feof(fd))
     {
         contact_item_t item;
@@ -150,9 +171,30 @@ int db_show_contact(const char* db_filename)
         if (db_read_item(fd, &item))
             break;
 
+        /*
         printf("[%d]\t%s\t(%d)\t%s\t%s\t%s\n",
                item.id, item.name, item.age,
                item.phone, item.email, item.resume);
+        */
+        if (NULL == proj || proj->id)
+            printf("[%d]\t", item.id);
+
+        if (NULL == proj || proj->name)
+            printf("%s\t", item.name);
+
+        if (NULL == proj || proj->age)
+            printf("(%d)\t", item.age);
+
+        if (NULL == proj || proj->phone)
+            printf("%s\t", item.phone);
+
+        if (NULL == proj || proj->email)
+            printf("%s\t", item.email);
+
+        if (NULL == proj || proj->resume)
+            printf("%s", item.resume);
+
+        printf("\n");
     }
 
     fclose(fd);
@@ -164,7 +206,7 @@ int db_del_contact_item(const char* db_filename, contact_item_t* item)
     return 0;
 }
 
-int db_find_contact_item(const char* db_filename, contact_item_t* pattern)
+int db_find_contact_item(const char* db_filename, contact_item_t* pattern, contact_row_projection_t* proj)
 {
     FILE* fd = fopen(db_filename, "r");
     if (NULL == fd)
@@ -173,7 +215,26 @@ int db_find_contact_item(const char* db_filename, contact_item_t* pattern)
         return 1;
     }
 
-    printf("[%s]\t%s\t\t(%s)\t%s\t\t%s\t\t\t%s\n", "id", "name", "age", "phone", "email", "resume");
+    if (NULL == proj || proj->id)
+        printf("[id]\t");
+
+    if (NULL == proj || proj->name)
+        printf("name\t\t");
+
+    if (NULL == proj || proj->age)
+        printf("(age)\t");
+
+    if (NULL == proj || proj->phone)
+        printf("phone\t\t");
+
+    if (NULL == proj || proj->email)
+        printf("email\t\t");
+
+    if (NULL == proj || proj->resume)
+        printf("resume\t\t");
+
+    printf("\n");
+
     while (!feof(fd))
     {
         contact_item_t item;
@@ -199,9 +260,25 @@ int db_find_contact_item(const char* db_filename, contact_item_t* pattern)
         if (pattern->resume[0] != 0 && NULL == strstr(item.resume, pattern->resume))
             continue;
 
-        printf("[%d]\t%s\t(%d)\t%s\t%s\t%s\n",
-               item.id, item.name, item.age,
-               item.phone, item.email, item.resume);
+        if (NULL == proj || proj->id)
+            printf("[%d]\t", item.id);
+
+        if (NULL == proj || proj->name)
+            printf("%s\t", item.name);
+
+        if (NULL == proj || proj->age)
+            printf("(%d)\t", item.age);
+
+        if (NULL == proj || proj->phone)
+            printf("%s\t", item.phone);
+
+        if (NULL == proj || proj->email)
+            printf("%s\t", item.email);
+
+        if (NULL == proj || proj->resume)
+            printf("%s", item.resume);
+
+        printf("\n");
     }
 
     fclose(fd);
@@ -234,7 +311,8 @@ int strstart_token(const char* str, const char* head, char** next_start)
 
     else if (strg_len == head_len)
     {
-        *next_start = (char*) str + strg_len;
+        if (NULL != next_start)
+            *next_start = (char*) str + strg_len;
         return !strcmp(str, head);
     }
 
@@ -242,25 +320,15 @@ int strstart_token(const char* str, const char* head, char** next_start)
     if (isalnum(*next) || '_' == *next)
         return 0;
 
-    *next_start = next;
+    if (NULL != next_start)
+        *next_start = next;
     return !strncmp(str, head, head_len);
 }
 
-const char* parse_select(dbctx_t* ctx, const char* sql)
+const char* parse_condition_statement(const char* sql, contact_item_t* item, char** next)
 {
-    DEBUG_PRINT("parse_select: %s\n", sql);
-    return NULL;
-}
+    char* c = (char*) sql;
 
-const char* parse_insert_values(dbctx_t* ctx, const char* sql)
-{
-    contact_item_t item;
-    const char* c = sql;
-    int have_next = 0;
-
-    DEBUG_PRINT("INSERT VALUES: %s\n", sql);
-    memset(&item, 0, sizeof(contact_item_t));
-    
     while (1)
     {
         int field = 0;
@@ -284,10 +352,10 @@ const char* parse_insert_values(dbctx_t* ctx, const char* sql)
             field = CONTACT_FIELD_PHONE;
 
         else if (strstart_token(c, "email", &vhead))
-            field = CONTACT_FIELD_EMAIL;
+           field = CONTACT_FIELD_EMAIL;
 
         else if (strstart_token(c, "resume", &vhead))
-            field = CONTACT_FIELD_RESUME;
+           field = CONTACT_FIELD_RESUME;
 
         else
         {
@@ -321,29 +389,27 @@ const char* parse_insert_values(dbctx_t* ctx, const char* sql)
         switch (field)
         {
             case CONTACT_FIELD_ID:
-                item.id = atoi(value);
+                item->id = atoi(value);
                 break;
             case CONTACT_FIELD_AGE:
-                item.age = atoi(value);
+                item->age = atoi(value);
                 break;
             case CONTACT_FIELD_NAME:
-                strncpy(item.name, value, 32);
+                strncpy(item->name, value, 32);
                 break;
             case CONTACT_FIELD_PHONE:
-                strncpy(item.phone, value, 32);
+                strncpy(item->phone, value, 32);
                 break;
             case CONTACT_FIELD_EMAIL:
-                strncpy(item.email, value, 32);
+                strncpy(item->email, value, 32);
                 break;
             case CONTACT_FIELD_RESUME:
-                strncpy(item.resume, value, 128);
+                item->resume_size = strlen(value);
+                strncpy(item->resume, value, 128);
                 break;
             default:
                 break;
         }
-
-        if (0 == *vtail)
-            break;
 
         c = vtail;
         SKIP_SPACE(c);
@@ -352,17 +418,191 @@ const char* parse_insert_values(dbctx_t* ctx, const char* sql)
             c++;
             continue;
         }
-        else if (';' == *c)
+        else if (';' == *c || 0 == *c)
         {
-            c++;
-            have_next = 1;
             break;
         }
     }
 
+    *next = c;
+    return NULL;
+}
+
+const char* parse_select_projection(const char* sql, contact_row_projection_t* p, char** next_start)
+{
+    char* c = (char*) sql;
+    char* next = NULL;
+    int have_column = 0;
+
+    while (1)
+    {
+        SKIP_SPACE(c);
+        if (strstart_token(c, "id", &next))
+        {
+            p->id = 1;
+            have_column = 1;
+        }
+
+        else if (strstart_token(c, "age", &next))
+        {
+            p->age = 1;
+            have_column = 1;
+        }
+
+        else if (strstart_token(c, "name", &next))
+        {
+            p->name = 1;
+            have_column = 1;
+        }
+
+        else if (strstart_token(c, "phone", &next))
+        {
+            p->phone = 1;
+            have_column = 1;
+        }
+
+        else if (strstart_token(c, "email", &next))
+        {
+            p->email = 1;
+            have_column = 1;
+        }
+
+        else if (strstart_token(c, "resume", &next))
+        {
+            p->resume = 1;
+            have_column = 1;
+        }
+
+        else if (strstart_token(c, "where", NULL))
+        {
+            if (0 == have_column)
+            {
+                printf("[ERROR] except column name.\n");
+                return c;
+            }
+
+            next = c;
+            break;
+        }
+
+        else if ('*' == *c)
+        {
+            p->id = 1;
+            p->age= 1;
+            p->name = 1;
+            p->phone = 1;
+            p->email = 1;
+            p->resume = 1;
+            next = c + 1;
+            have_column = 1;
+            break;
+        }
+        
+        else if (0 == *c || ';' == *c)
+        {
+            if (0 == have_column)
+            {
+                printf("[ERROR] except column name.\n");
+                return c;
+            }
+
+            next = c;
+            break;
+        }
+
+        else
+        {
+            char var[1024] = "";
+            char* tail = c;
+
+            while (isalnum(*tail) || '_' == *tail)
+                tail++;
+
+            strncpy(var, c, tail - c);
+            printf("[ERROR] invalid column '%s'\n", var);
+            return c;
+        }
+
+        c = next;
+        SKIP_SPACE(c);
+        if (',' == *c)
+            c++;
+    }
+
+    DEBUG_PRINT("PROJECTION: id=%d, age=%d, name=%d, phone=%d, email=%d, resume=%d\n",
+            p->id, p->age, p->name, p->phone, p->email, p->resume);
+
+    *next_start = next;
+    return NULL;
+}
+
+const char* parse_select(dbctx_t* ctx, const char* sql)
+{
+    char* c = (char*) sql;
+    char* next = NULL;
+    const char* err = NULL;
+    contact_row_projection_t projection;
+    contact_item_t item;
+
+    DEBUG_PRINT("SELECT: %s\n", sql);
+
+    memset(&projection, 0, sizeof(contact_row_projection_t));
+    memset(&item, 0, sizeof(contact_item_t));
+
+    err = parse_select_projection(c, &projection, &next);
+    if (NULL != err)
+        return err;
+
+    c = next;
+    SKIP_SPACE(c);
+
+    if (0 == *c)
+    {
+        db_show_contact(ctx->db_filename, &projection);
+        return NULL;
+    }
+
+    if (';' == *c)
+    {
+        db_show_contact(ctx->db_filename, &projection);
+        return parse(ctx, c + 1);
+    }
+
+    DEBUG_PRINT("PARSE WHERE: %s<<<\n", c);
+    if (!strstart_token(c, "where", &next))
+    {
+        printf("[ERROR] expect where statement\n");
+        return c;
+    }
+
+    c = next;
+    err = parse_condition_statement(c, &item, &next);
+    if (NULL != err)
+        return err;
+
+    db_find_contact_item(ctx->db_filename, &item, &projection);
+    if (';' == *next)
+        return parse(ctx, next + 1);
+
+    return NULL;
+}
+
+const char* parse_insert_values(dbctx_t* ctx, const char* sql)
+{
+    contact_item_t item;
+    const char* err = NULL;
+    char* next = NULL;
+
+    DEBUG_PRINT("INSERT VALUES: %s\n", sql);
+    memset(&item, 0, sizeof(contact_item_t));
+
+    err = parse_condition_statement(sql, &item, &next);
+    if (NULL != err)
+        return err;
+    
     db_add_contact_item(ctx->db_filename, &item);
-    if (have_next)
-        return parse(ctx, c);
+    if (';' == *next)
+        return parse(ctx, next + 1);
     
     return 0;
 }
@@ -459,16 +699,16 @@ int main(int argc, char* argv[])
         if (NULL != (err_chr = parse(&ctx, sql)))
         {
             char* c = sql;
-            printf("syntax error:\n  %s\n", sql);
+            printf("syntax error:\n  '%s'\n", sql);
 
-            printf("  ");
+            printf("   ");
             for (c = sql; c != err_chr; c++)
                 putchar(' ');
             printf("^\n");
 
             printf("example:\n"
                    "  select *\n"
-                   "  insert valus id = 1, age = 20, name = Lily, phone = 12345, email = lily@example.com, resume = hi;\n"
+                   "  insert values id = 1, age = 20, name = Lily, phone = 12345, email = lily@example.com, resume = hi;\n"
                   );
             continue;
         }
