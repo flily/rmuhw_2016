@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #define SQL_STATEMENT_BUFFER_SIZE               4096
 #define STR_STARTS_WITH(s, prefix)     (!strncmp(s, prefix, strlen(prefix)))
@@ -14,6 +15,42 @@
     char phone[32];                             \
     char email[32];
 
+
+#define CONTACT_FIELD_ID                        1
+#define CONTACT_FIELD_AGE                       2
+#define CONTACT_FIELD_NAME                      3
+#define CONTACT_FIELD_PHONE                     4
+#define CONTACT_FIELD_EMAIL                     5
+#define CONTACT_FIELD_RESUME                    6
+
+#define SQL_VERB_ERROR                          0
+#define SQL_VERB_SELECT                         1
+#define SQL_VERB_ADD                            2
+
+
+#define DEBUG
+
+#ifdef DEBUG
+#define DEBUG_PRINT(...)          printf(__VA_ARGS__)
+#else
+#define DEBUG_PRINT(...)
+#endif
+
+
+#define SKIP_SPACE(c)                                           \
+            do                                                  \
+            {                                                   \
+                while (isspace(*c))                             \
+                    c++;                                        \
+            } while (0)
+
+
+struct dbctx_s
+{
+    const char* db_filename;
+};
+
+typedef struct dbctx_s dbctx_t;
 
 struct contact_fixed_header_s
 {
@@ -41,6 +78,8 @@ struct contact_row_projection_s
 };
 
 typedef struct contact_row_projection_s contact_row_projection_t;
+
+const char* parse(dbctx_t* ctx, const char* sql);
 
 int db_add_contact_item(const char* db_filename, contact_item_t* item)
 {
@@ -169,79 +208,270 @@ int db_find_contact_item(const char* db_filename, contact_item_t* pattern)
     return 0;
 }
 
-contact_item_t* parse_contact_item(int argc, char* argv[])
+int strstart(const char* str, const char* head)
 {
-    int i = 0;
-    size_t item_size = sizeof(contact_item_t);
-    contact_item_t* item = (contact_item_t*) malloc(item_size);
-    if (NULL == item)
-        return NULL;
+    size_t strg_len = strlen(str);
+    size_t head_len = strlen(head);
 
-    memset(item, 0, item_size);
-    for (i = 3; i < argc; i++)
+    if (strg_len < head_len)
+        return 0;
+
+    else if (strg_len == head_len)
+        return !strcmp(str, head);
+
+    else
+        return !strncmp(str, head, head_len);
+}
+
+int strstart_token(const char* str, const char* head, char** next_start)
+{
+    size_t strg_len = strlen(str);
+    size_t head_len = strlen(head);
+    char* next = NULL;
+
+    if (strg_len < head_len)
+        return 0;
+
+    else if (strg_len == head_len)
     {
-        if (STR_STARTS_WITH(argv[i], "--id="))
+        *next_start = (char*) str + strg_len;
+        return !strcmp(str, head);
+    }
+
+    next = (char*) str + head_len;
+    if (isalnum(*next) || '_' == *next)
+        return 0;
+
+    *next_start = next;
+    return !strncmp(str, head, head_len);
+}
+
+const char* parse_select(dbctx_t* ctx, const char* sql)
+{
+    DEBUG_PRINT("parse_select: %s\n", sql);
+    return NULL;
+}
+
+const char* parse_insert_values(dbctx_t* ctx, const char* sql)
+{
+    contact_item_t item;
+    const char* c = sql;
+    int have_next = 0;
+
+    DEBUG_PRINT("INSERT VALUES: %s\n", sql);
+    memset(&item, 0, sizeof(contact_item_t));
+    
+    while (1)
+    {
+        int field = 0;
+        char* vhead= NULL;
+        char* vtail = NULL;
+        char value[1024] = "";
+
+        DEBUG_PRINT("c: %s<<<\n", c);
+
+        SKIP_SPACE(c);
+        if (strstart_token(c, "id", &vhead))
+            field = CONTACT_FIELD_ID;
+
+        else if (strstart_token(c, "age", &vhead))
+            field = CONTACT_FIELD_AGE;
+
+        else if (strstart_token(c, "name", &vhead))
+            field = CONTACT_FIELD_NAME;
+
+        else if (strstart_token(c, "phone", &vhead))
+            field = CONTACT_FIELD_PHONE;
+
+        else if (strstart_token(c, "email", &vhead))
+            field = CONTACT_FIELD_EMAIL;
+
+        else if (strstart_token(c, "resume", &vhead))
+            field = CONTACT_FIELD_RESUME;
+
+        else
         {
-            item->id = atoi(&argv[i][5]);
+            char var[1024] = "";
+            const char* x = c;
+            while (isalnum(*x) || '_' == *x)
+                x++;
+
+            strncpy(var, c, x - c);
+            printf("[ERROR] invalid field '%s'\n", var);
+            return c;
         }
-        else if (STR_STARTS_WITH(argv[i], "--age="))
+
+        DEBUG_PRINT("field: %d\n", field);
+
+        SKIP_SPACE(vhead);
+        if ('=' != *vhead)
         {
-            item->age = atoi(&argv[i][6]);
+            printf("[ERROR] an asignment '=' expect\n");
+            return vhead;
         }
-        else if (STR_STARTS_WITH(argv[i], "--name="))
+
+        vhead++;
+        SKIP_SPACE(vhead);
+        vtail = vhead;
+        while (';' != *vtail && ',' != *vtail && 0 != *vtail)
+            vtail ++;
+
+        strncpy(value, vhead, vtail - vhead);
+        DEBUG_PRINT("Field '%d': %s<<<\n", field, value);
+        switch (field)
         {
-            strncpy(item->name, &argv[i][7], 32);
+            case CONTACT_FIELD_ID:
+                item.id = atoi(value);
+                break;
+            case CONTACT_FIELD_AGE:
+                item.age = atoi(value);
+                break;
+            case CONTACT_FIELD_NAME:
+                strncpy(item.name, value, 32);
+                break;
+            case CONTACT_FIELD_PHONE:
+                strncpy(item.phone, value, 32);
+                break;
+            case CONTACT_FIELD_EMAIL:
+                strncpy(item.email, value, 32);
+                break;
+            case CONTACT_FIELD_RESUME:
+                strncpy(item.resume, value, 128);
+                break;
+            default:
+                break;
         }
-        else if (STR_STARTS_WITH(argv[i], "--phone="))
+
+        if (0 == *vtail)
+            break;
+
+        c = vtail;
+        SKIP_SPACE(c);
+        if (',' == *c)
         {
-            strncpy(item->phone, &argv[i][8], 32);
+            c++;
+            continue;
         }
-        else if (STR_STARTS_WITH(argv[i], "--email="))
+        else if (';' == *c)
         {
-            strncpy(item->email, &argv[i][8], 32);
-        }
-        else if (STR_STARTS_WITH(argv[i], "--resume="))
-        {
-            size_t resume_size = strlen(&argv[i][9]);
-            item->resume_size = resume_size;
-            strncpy(item->resume, &argv[i][9], 128);
+            c++;
+            have_next = 1;
+            break;
         }
     }
 
-#if 0
-    printf("id: %d\n" "age: %d\n"
-           "name: %s\n" "phone: %s\n"
-           "email: %s\n" "resume: %s\n",
-           item->id, item->age, item->name,
-           item->phone, item->email, item->resume);
-#endif
+    db_add_contact_item(ctx->db_filename, &item);
+    if (have_next)
+        return parse(ctx, c);
+    
+    return 0;
+}
 
-    return item;
+const char* parse_insert(dbctx_t* ctx, const char* sql)
+{
+    char* c = (char*) sql;
+    char* f = NULL;
+
+    while (isspace(*c))
+        c++;
+
+    printf("INSERT: %s\n", c);
+    if (strstart_token(c, "value", &f))
+        return parse_insert_values(ctx, f);
+
+    else if (strstart_token(c, "values", &f))
+        return parse_insert_values(ctx, f);
+
+    else if (strstart(c, ";"))
+    {
+        printf("insert nothing.\n");
+        return NULL;
+    }
+
+    else
+    {
+        printf("[ERROR] expect keyword 'value' or 'values' here, or ';' to terminate statement\n");
+        return c;
+    }
+}
+
+const char* parse(dbctx_t* ctx, const char* sql)
+{
+    const char* c = sql;
+
+    while (isspace(*c))
+        c++;
+
+    if (0 == *c)
+        return NULL;
+    
+    if (strstart(c, "select"))
+        return parse_select(ctx, c + 6);
+
+    else if (strstart(c, "insert"))
+        return parse_insert(ctx, c + 6);
+
+    else
+    {
+        printf("Unknow verb: %s\n", sql);
+        return sql;
+    }
 }
 
 void usage(const char* name)
 {
-    printf("%s dbfile [command] [args...]\n", name);
+    printf("%s dbfile \n", name);
     exit(0);
 }
 
 int main(int argc, char* argv[])
 {
-    contact_item_t* item = NULL;
-    char* db_filename = NULL;
-    char* c = NULL;
     int retval = 0;
     char sql[SQL_STATEMENT_BUFFER_SIZE + 1] = "";
+    dbctx_t ctx;
+
+    if (argc <= 1)
+    {
+        printf("no db file specified.\n");
+        usage(argv[0]);
+        return 0;
+    }
+
+    ctx.db_filename = argv[1];
 
     while (1)
     {
+        char* read_str = NULL;
+        const char* err_chr = NULL;
         printf("SQL> ");
         fflush(stdout);
 
-        fgets(sql, SQL_STATEMENT_BUFFER_SIZE, stdin);
-        printf("READ: %s\n", sql);
-        if (!strcmp(sql, "exit"))
+        read_str = fgets(sql, SQL_STATEMENT_BUFFER_SIZE, stdin);
+        if (NULL == read_str)
+        {
+            printf("EOF\n");
             break;
+        }
+
+        /* remove the last '\n' */
+        sql[strlen(sql) - 1] = 0;
+
+        if (NULL != (err_chr = parse(&ctx, sql)))
+        {
+            char* c = sql;
+            printf("syntax error:\n  %s\n", sql);
+
+            printf("  ");
+            for (c = sql; c != err_chr; c++)
+                putchar(' ');
+            printf("^\n");
+
+            printf("example:\n"
+                   "  select *\n"
+                   "  insert valus id = 1, age = 20, name = Lily, phone = 12345, email = lily@example.com, resume = hi;\n"
+                  );
+            continue;
+        }
     }
 
     return retval;
