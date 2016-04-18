@@ -375,16 +375,16 @@ const char* parse_insert(dbctx_t* ctx, const char* sql)
     while (isspace(*c))
         c++;
 
-    printf("INSERT: %s\n", c);
+    DEBUG_PRINT("INSERT: %s\n", c);
     if (strstart_token(c, "value", &f))
         return parse_insert_values(ctx, f);
 
     else if (strstart_token(c, "values", &f))
         return parse_insert_values(ctx, f);
 
-    else if (strstart(c, ";"))
+    else if (0 == *c || strstart(c, ";"))
     {
-        printf("insert nothing.\n");
+        printf("[WARNING] insert nothing.\n");
         return NULL;
     }
 
